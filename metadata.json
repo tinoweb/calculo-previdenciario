@@ -1,0 +1,6 @@
+{
+  "name": "Sistema de Cálculos Previdenciários",
+  "description": "Sistema premium completo direcionado para advogados previdenciaristas, incluindo liquidação de sentença, planejamento previdenciário, revisão de benefícios (RGPS/RPPS) e simulação de benefícios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
