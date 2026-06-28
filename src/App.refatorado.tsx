@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Cliente, TipoCalculo, CalculoRegistro } from './types';
+import { Cliente, TipoCalculo, PlanoTier, CalculoRegistro } from './types';
+import { PLANOS_INFO, TETO_INSS_2026, SALARIO_MINIMO_2026 } from './data';
 import { useAuth } from './hooks/useAuth';
 import { useClientes } from './hooks/useClientes';
 import { useCalculos } from './hooks/useCalculos';
@@ -14,7 +15,6 @@ import { Header } from './components/Header/Header';
 import { LandingPage } from './components/LandingPage/LandingPage';
 import { LoginPage } from './components/LoginPage/LoginPage';
 import { Dashboard } from './components/Dashboard/Dashboard';
-import { CalculoForms } from './components/Forms/CalculoForms';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import { Toast, ToastType } from './components/Common/Toast';
 
@@ -22,9 +22,11 @@ export default function App() {
   const {
     usuarioNome,
     usuarioEmail,
+    planoAtivo,
     estaLogado,
     login,
-    logout
+    logout,
+    atualizarPlano
   } = useAuth();
 
   const {
@@ -53,7 +55,6 @@ export default function App() {
   const [calcResultado, setCalcResultado] = useState<unknown>(null);
   const [parecerIATexto, setParecerIATexto] = useState<string>('');
   const [parecerIAStatus, setParecerIAStatus] = useState<'ocioso' | 'gerando' | 'sucesso' | 'erro'>('ocioso');
-  const [formValores, setFormValores] = useState<Record<string, unknown>>({});
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -65,6 +66,13 @@ export default function App() {
   const clienteAtivo = clientes.find(c => c.id === clienteSelecionadoId) || clientes[0];
 
   // Handlers de navegação
+  const handlePlanoSelect = useCallback((plano: PlanoTier) => {
+    atualizarPlano(plano);
+    login('demo@prevcalculus.com', 'Usuário Demo');
+    setTelaAtiva('dashboard');
+    showToast(`Plano ${plano.toUpperCase()} ativado com sucesso!`);
+  }, [atualizarPlano, login, showToast]);
+
   const handleLogin = useCallback((email: string, senha: string) => {
     login(email, senha);
     setTelaAtiva('dashboard');
@@ -72,10 +80,11 @@ export default function App() {
   }, [login, showToast]);
 
   const handleTesteRapido = useCallback(() => {
-    login('usuario@exemplo.com', 'Usuário');
+    atualizarPlano('prata');
+    login('teste@prevcalculus.com', 'Teste');
     setTelaAtiva('dashboard');
-    showToast('Acesso liberado!');
-  }, [login, showToast]);
+    showToast('Conta teste ativada!');
+  }, [atualizarPlano, login, showToast]);
 
   const handleLogout = useCallback(() => {
     logout();
@@ -105,20 +114,6 @@ export default function App() {
     showToast(`Cliente "${cliente.nome}" cadastrado!`);
   }, [adicionarCliente, showToast]);
 
-  // Handler para mudança de tipo de cálculo
-  const handleTipoChange = useCallback((tipo: TipoCalculo) => {
-    setTipoCalculoAtivo(tipo);
-    setFormValores({});
-    setCalcResultado(null);
-    setParecerIATexto('');
-    setParecerIAStatus('ocioso');
-  }, []);
-
-  // Handler para mudança de valores do formulário
-  const handleFormChange = useCallback((key: string, value: unknown) => {
-    setFormValores(prev => ({ ...prev, [key]: value }));
-  }, []);
-
   // Handler de cálculo usando Strategy Pattern
   const executarCalculoAtivo = useCallback(() => {
     if (!clienteAtivo) {
@@ -129,22 +124,19 @@ export default function App() {
     try {
       const strategy = CalculationStrategyFactory.getStrategy(tipoCalculoAtivo);
       
-      // Montar parâmetros baseados no tipo de cálculo e valores do formulário
-      const params: Record<string, unknown> = { ...formValores };
+      // Montar parâmetros baseados no tipo de cálculo
+      const params: Record<string, unknown> = {};
       
       // Parâmetros comuns do cliente
       if (tipoCalculoAtivo === 'planejamento' || tipoCalculoAtivo === 'rpps_uniao') {
         params.genero = clienteAtivo.genero;
-        const dataNasc = new Date(clienteAtivo.dataNascimento);
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
-        dataNasc.setHours(0, 0, 0, 0);
-        params.idade = Math.floor((hoje.getTime() - dataNasc.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+        params.idade = new Date().getFullYear() - new Date(clienteAtivo.dataNascimento).getFullYear();
       }
 
       if (tipoCalculoAtivo === 'planejamento') {
         params.tempoAnos = clienteAtivo.tempoAnos;
         params.carencia = clienteAtivo.carencia;
+        params.mediaSalarial = 5500; // Valor padrão, deveria vir de input
       }
 
       // Validar parâmetros
@@ -176,10 +168,15 @@ export default function App() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Erro ao realizar cálculo', 'error');
     }
-  }, [clienteAtivo, tipoCalculoAtivo, formValores, adicionarCalculo, showToast]);
+  }, [clienteAtivo, tipoCalculoAtivo, adicionarCalculo, showToast]);
 
   // Handler de geração de parecer com IA
   const handleGerarParecerIA = useCallback(async () => {
+    if (planoAtivo !== 'ouro') {
+      showToast('Parecer IA exclusivo do Plano Ouro', 'warning');
+      return;
+    }
+
     if (!clienteAtivo || !calcResultado) {
       showToast('Execute um cálculo primeiro', 'error');
       return;
@@ -216,7 +213,7 @@ export default function App() {
       setParecerIATexto('Não foi possível gerar o parecer. Tente novamente.');
       showToast('Erro ao gerar parecer com IA', 'error');
     }
-  }, [clienteAtivo, calcResultado, tipoCalculoAtivo, showToast]);
+  }, [planoAtivo, clienteAtivo, calcResultado, tipoCalculoAtivo, showToast]);
 
   return (
     <ErrorBoundary>
@@ -229,6 +226,7 @@ export default function App() {
         <Header
           usuarioNome={usuarioNome}
           usuarioEmail={usuarioEmail}
+          planoAtivo={planoAtivo}
           estaLogado={estaLogado}
           telaAtiva={telaAtiva}
           onDashboardClick={() => setTelaAtiva('dashboard')}
@@ -251,6 +249,7 @@ export default function App() {
         {/* Conteúdo Principal */}
         {telaAtiva === 'landing' && (
           <LandingPage
+            onPlanoSelect={handlePlanoSelect}
             onLoginClick={() => setTelaAtiva('login')}
           />
         )}
@@ -265,6 +264,7 @@ export default function App() {
         {telaAtiva === 'dashboard' && (
           <Dashboard
             usuarioNome={usuarioNome}
+            planoAtivo={planoAtivo}
             clientes={clientes}
             clienteSelecionadoId={clienteSelecionadoId}
             tipoCalculoAtivo={tipoCalculoAtivo}
@@ -272,16 +272,13 @@ export default function App() {
             onClienteDelete={handleClienteDelete}
             onClienteToggleFavorito={toggleFavorito}
             onClienteAdd={handleClienteAdd}
-            onTipoChange={handleTipoChange}
+            onTipoChange={setTipoCalculoAtivo}
             onCalcular={executarCalculoAtivo}
-            calcResultado={calcResultado}
           >
-            <CalculoForms
-              tipoCalculoAtivo={tipoCalculoAtivo}
-              clienteAtivo={clienteAtivo}
-              onInputChange={handleFormChange}
-              valores={formValores}
-            />
+            {/* Formulários de cálculo seriam implementados aqui */}
+            <div className="text-center text-slate-400 text-xs py-8">
+              Formulários de cálculo a serem implementados
+            </div>
           </Dashboard>
         )}
       </div>
